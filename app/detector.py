@@ -20,17 +20,56 @@ def _get_model() -> YOLO:
     return _model
 
 
-def _resize_for_detection(frame: np.ndarray, target_width: int) -> Tuple[np.ndarray, float]:
-    orig_h, orig_w = frame.shape[:2]
-    if orig_w <= 0 or target_width <= 0:
-        return frame, 1.0
-    if orig_w == target_width:
-        return frame, 1.0
+def _iou_xyxy(a: Tuple[int, int, int, int], b: Tuple[int, int, int, int]) -> float:
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
 
-    scale = float(target_width) / float(orig_w)
-    new_h = max(1, int(orig_h * scale))
-    resized = cv2.resize(frame, (target_width, new_h), interpolation=cv2.INTER_LINEAR)
-    return resized, scale
+    inter_x1 = max(ax1, bx1)
+    inter_y1 = max(ay1, by1)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+
+    iw = max(0, inter_x2 - inter_x1)
+    ih = max(0, inter_y2 - inter_y1)
+    inter = iw * ih
+    if inter <= 0:
+        return 0.0
+
+    area_a = max(0, ax2 - ax1) * max(0, ay2 - ay1)
+    area_b = max(0, bx2 - bx1) * max(0, by2 - by1)
+    denom = float(area_a + area_b - inter)
+    if denom <= 0:
+        return 0.0
+    return float(inter) / denom
+
+
+def _dedupe_by_iou(dets: List[Dict[str, Any]], iou_thr: float) -> List[Dict[str, Any]]:
+    if not dets:
+        return dets
+    if iou_thr is None:
+        return dets
+    try:
+        thr = float(iou_thr)
+    except Exception:
+        return dets
+
+    if thr <= 0:
+        return dets
+
+    # Greedy NMS on already-NMSed boxes: removes rare duplicates YOLO can still leave.
+    dets_sorted = sorted(dets, key=lambda d: float(d.get("confidence", 0.0)), reverse=True)
+    kept: List[Dict[str, Any]] = []
+    kept_boxes: List[Tuple[int, int, int, int]] = []
+    for d in dets_sorted:
+        bb = d.get("bbox")
+        if not bb or len(bb) != 4:
+            continue
+        box = (int(bb[0]), int(bb[1]), int(bb[2]), int(bb[3]))
+        if any(_iou_xyxy(box, kb) >= thr for kb in kept_boxes):
+            continue
+        kept.append(d)
+        kept_boxes.append(box)
+    return kept
 
 
 def detect_persons(
@@ -43,42 +82,42 @@ def detect_persons(
         camera_id,
         {"imgsz": 1280, "conf": 0.15},
     )
-    target_width = int(settings["imgsz"]) 
-    conf = float(settings["conf"])
+    imgsz = int(settings.get("imgsz", 1280))
+    conf = float(settings.get("conf", 0.15))
+    iou = float(settings.get("iou", config.IOU_THRESHOLD))
+    augment = bool(settings.get("augment", config.YOLO_AUGMENT))
+    max_det = int(settings.get("max_det", config.YOLO_MAX_DET))
+    min_area_ratio = float(settings.get("min_box_area_ratio", config.MIN_BOX_AREA_RATIO))
+    min_h_ratio = float(settings.get("min_box_height_ratio", config.MIN_BOX_HEIGHT_RATIO))
+    dedupe_iou = settings.get("dedupe_iou", 0.65)
 
-    resized, scale = _resize_for_detection(frame, target_width)
-
-    resized_h, resized_w = resized.shape[:2]
+    # IMPORTANT: run YOLO on the original frame. Pre-resizing here causes double-resize
+    # (our resize + YOLO's letterbox), which hurts small-person recall and stability.
+    proc = frame
+    proc_h, proc_w = proc.shape[:2]
     results = model.predict(
-        resized,
+        proc,
         conf=conf,
-        iou=config.IOU_THRESHOLD,
-        imgsz=target_width,
+        iou=iou,
+        imgsz=imgsz,
         classes=[config.PERSON_CLASS_ID],
-        augment=config.YOLO_AUGMENT,
-        max_det=config.YOLO_MAX_DET,
+        augment=augment,
+        max_det=max_det,
         verbose=False,
     )
 
-    people = []
-    for box in results[0].boxes:
-        cls = int(box.cls[0])
-        conf_val = float(box.conf[0])
-
-        if cls == config.PERSON_CLASS_ID:
-            if conf_val < conf:
-                continue
-            people.append(box)
-
     detections = []
-    annotated = resized.copy()
-    proc_h, proc_w = resized.shape[:2]
+    annotated = proc.copy()
     frame_area = float(proc_h * proc_w)
 
-    for box in people:
+    # Ultralytics already applies conf threshold and NMS; we only do size sanity filters here.
+    for box in results[0].boxes:
         x1, y1, x2, y2 = map(int, box.xyxy[0])
         conf_val = float(box.conf[0])
         cls_id = int(box.cls[0])
+
+        if cls_id != config.PERSON_CLASS_ID:
+            continue
 
         x1 = max(0, min(x1, proc_w - 1))
         y1 = max(0, min(y1, proc_h - 1))
@@ -89,14 +128,14 @@ def detect_persons(
             continue
 
         box_area = max(0, x2 - x1) * max(0, y2 - y1)
-        if frame_area > 0 and (box_area / frame_area) < config.MIN_BOX_AREA_RATIO:
+        if frame_area > 0 and (box_area / frame_area) < min_area_ratio:
             continue
 
         box_h = float(y2 - y1)
-        if proc_h > 0 and (box_h / float(proc_h)) < config.MIN_BOX_HEIGHT_RATIO:
+        if proc_h > 0 and (box_h / float(proc_h)) < min_h_ratio:
             continue
 
-        crop = resized[y1:y2, x1:x2].copy()
+        crop = proc[y1:y2, x1:x2].copy()
 
         detections.append({
             "bbox": [x1, y1, x2, y2],
@@ -105,10 +144,15 @@ def detect_persons(
             "crop": crop,
         })
 
+    detections = _dedupe_by_iou(detections, dedupe_iou)
+
+    for d in detections:
+        x1, y1, x2, y2 = map(int, d["bbox"])
+        conf_val = float(d.get("confidence", 0.0))
         cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
         cv2.putText(
             annotated,
-            "person",
+            f"person {conf_val:.2f}",
             (x1, y1 - 5),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,

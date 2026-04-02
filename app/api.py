@@ -137,7 +137,10 @@ def _post_callback(
     }
     data = {
         "meta": json.dumps(meta, ensure_ascii=False),
-        "count": str(int(total_people_all)),
+        # `count` is what webhook.site shows prominently; it should reflect THIS image.
+        "count": str(int(people_count)),
+        "people_count": str(int(people_count)),
+        "total_people_all": str(int(total_people_all)),
     }
     requests.post(callback_url, data=data, files=files, timeout=20)
 
