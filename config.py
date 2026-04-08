@@ -1,14 +1,17 @@
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUTS_DIR = BASE_DIR / "outputs"
 
+API_KEY = os.environ.get("API_KEY", "abc123")
+
 RTSP_CAMERAS = {
-    "cam1": "rtsp://admin:Qwerty135@192.168.3.149:554/Streaming/Channels/101",
-    "cam2": "rtsp://admin:Qwerty135@192.168.3.149:554/Streaming/Channels/201",
+    "cam1": "rtsp://admin:Qwerty135@192.168.3.251:554/Streaming/Channels/101",
+    "cam2": "rtsp://admin:Qwerty135@192.168.3.251:554/Streaming/Channels/201",
 }
 
-INTERVAL_SECONDS = 30
+INTERVAL_SECONDS = 300
 
 RTSP_TIMEOUT_SECONDS = 15
 RTSP_RETRY_ATTEMPTS = 3

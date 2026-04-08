@@ -347,6 +347,103 @@ def api_status():
     return jsonify(payload)
 
 
+def _require_api_key():
+    api_key = request.headers.get("X-API-Key", "")
+    if not api_key or api_key != config.API_KEY:
+        return jsonify({"error": "Invalid or missing API key"}), 401
+
+
+@app.route("/api/v1/tasks/submit", methods=["POST"])
+def api_task_submit():
+    """
+    Submit an image with metadata and get a person count.
+    ---
+    tags:
+      - tasks
+    consumes:
+      - multipart/form-data
+    parameters:
+      - name: file
+        in: formData
+        type: file
+        required: true
+        description: Image file
+      - name: metadata
+        in: formData
+        type: string
+        required: false
+        description: JSON metadata string
+    responses:
+      200:
+        description: Detection result
+      400:
+        description: Invalid input
+      401:
+        description: Unauthorized
+    """
+    auth_error = _require_api_key()
+    if auth_error is not None:
+        return auth_error
+
+    file = request.files.get("file") or request.files.get("image")
+    if not file or not file.filename:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    metadata_raw = request.form.get("metadata", "")
+    metadata = {}
+    if metadata_raw:
+        try:
+            metadata = json.loads(metadata_raw)
+            if not isinstance(metadata, dict):
+                raise ValueError("metadata must be a JSON object")
+        except Exception as exc:
+            return jsonify({"error": f"Invalid metadata JSON: {exc}"}), 400
+
+    camera_id = (
+        str(metadata.get("camera_name") or metadata.get("camera_serial") or metadata.get("camera_id") or "cam1")
+    )
+
+    file_bytes = file.read()
+    if not file_bytes:
+        return jsonify({"error": "File bytes are empty"}), 400
+
+    nparr = np.frombuffer(file_bytes, np.uint8)
+    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if frame is None:
+        return jsonify({"error": "Invalid image format"}), 400
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    ext = Path(file.filename).suffix.lower() or ".jpg"
+    if ext not in (".jpg", ".jpeg", ".png", ".bmp"):
+        ext = ".jpg"
+
+    config.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    config.UPLOADS_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+    safe_camera_id = camera_id.replace("/", "_").replace("\\", "_")
+    raw_name = f"task_{safe_camera_id}_{timestamp}{ext}"
+    processed_name = f"task_{safe_camera_id}_{timestamp}.jpg"
+    raw_path = config.UPLOADS_DIR / raw_name
+    processed_path = config.UPLOADS_PROCESSED_DIR / processed_name
+
+    cv2.imwrite(str(raw_path), frame)
+    people_count, annotated_frame, _ = detect_persons(frame, camera_id)
+    cv2.imwrite(str(processed_path), annotated_frame)
+
+    latest = _latest_by_camera()
+    cameras_total = sum(int(v.get("people_count", 0) or 0) for v in latest.values())
+    total_people_all = cameras_total + people_count
+
+    processed_url = "/outputs/" + str(processed_path.relative_to(config.OUTPUTS_DIR)).replace("\\", "/")
+    return jsonify({
+        "people_count": people_count,
+        "total_people_all": total_people_all,
+        "camera_id": camera_id,
+        "metadata": metadata,
+        "processed_image_url": processed_url,
+    })
+
+
 @app.route("/api/upload", methods=["POST"])
 def api_upload():
     """
