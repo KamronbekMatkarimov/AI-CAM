@@ -6,33 +6,35 @@ OUTPUTS_DIR = BASE_DIR / "outputs"
 
 API_KEY = os.environ.get("API_KEY", "abc123")
 
-RTSP_CAMERAS = {
-    "cam1": "rtsp://admin:Qwerty135@192.168.3.251:554/Streaming/Channels/101",
-    "cam2": "rtsp://admin:Qwerty135@192.168.3.251:554/Streaming/Channels/201",
-}
+# API keys for different services
+API_KEYS_FILE = OUTPUTS_DIR / "logs" / "api_keys.json"
+
+# RTSP cameras are not used for API-only mode.
+# Keep this empty when you do not need real-time camera capture.
+RTSP_CAMERAS = {}
 
 INTERVAL_SECONDS = 300
 
 RTSP_TIMEOUT_SECONDS = 15
 RTSP_RETRY_ATTEMPTS = 3
 
-YOLO_MODEL = "yolov8m.pt"
+YOLO_MODEL = "yolov8n.pt"
 PERSON_CLASS_ID = 0
 IOU_THRESHOLD = 0.45
 YOLO_AUGMENT = False
-YOLO_MAX_DET = 300
-MIN_BOX_AREA_RATIO = 0.000030
-MIN_BOX_HEIGHT_RATIO = 0.012
+YOLO_MAX_DET = 100
+MIN_BOX_AREA_RATIO = 0.001
+MIN_BOX_HEIGHT_RATIO = 0.05
 
 CAMERA_DETECTION_SETTINGS = {
     "cam1": {
-        "imgsz": 1600,
-        "conf": 0.25,
+        "imgsz": 640,
+        "conf": 0.3,
         "dedupe_iou": 0.65,
     },
     "cam2": {
-        "imgsz": 1920,
-        "conf": 0.16,
+        "imgsz": 640,
+        "conf": 0.3,
         "dedupe_iou": 0.65,
     },
 }

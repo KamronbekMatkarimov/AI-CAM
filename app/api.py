@@ -13,7 +13,6 @@ import traceback
 import cv2
 import numpy as np
 from flask import Flask, jsonify, render_template, send_from_directory, request, Response
-from flasgger import Swagger
 import requests
 
 import config
@@ -41,31 +40,31 @@ def _handle_unexpected_error(e: Exception):
         return jsonify({"error": str(e), "type": type(e).__name__}), 500
     return Response("Internal Server Error", status=500)
 
-swagger = Swagger(
-    app,
-    config={
-        "specs": [
-            {
-                "endpoint": "apispec_1",
-                "route": "/apispec_1.json",
-                "rule_filter": lambda rule: True,
-                "model_filter": lambda tag: True,
-            }
-        ],
-        "headers": [],
-        "specs_route": "/apidocs/",
-        "title": "CamAI API Docs",
-        "uiversion": 3,
-    },
-    template={
-        "swagger": "2.0",
-        "info": {
-            "title": "CamAI API",
-            "description": "RTSP camera person detection dashboard + API.",
-            "version": "1.0.0",
-        },
-    },
-)
+# swagger = Swagger(
+#     app,
+#     config={
+#         "specs": [
+#             {
+#                 "endpoint": "apispec_1",
+#                 "route": "/apispec_1.json",
+#                 "rule_filter": lambda rule: True,
+#                 "model_filter": lambda tag: True,
+#             }
+#         ],
+#         "headers": [],
+#         "specs_route": "/apidocs/",
+#         "title": "CamAI API Docs",
+#         "uiversion": 3,
+#     },
+#     template={
+#         "swagger": "2.0",
+#         "info": {
+#             "title": "CamAI API",
+#             "description": "RTSP camera person detection dashboard + API.",
+#             "version": "1.0.0",
+#         },
+#     },
+# )
 
 @dataclass(frozen=True)
 class _QueueJob:
@@ -316,6 +315,11 @@ def index():
     return render_template("index.html", cameras=list(config.RTSP_CAMERAS.keys()))
 
 
+@app.route("/api/test-submit")
+def api_test_submit():
+    return render_template("api_submit_test_v2.html")
+
+
 @app.route("/api/status")
 def api_status():
     """
@@ -353,6 +357,42 @@ def _require_api_key():
         return jsonify({"error": "Invalid or missing API key"}), 401
 
 
+def _load_api_keys():
+    """Load API keys from JSON file."""
+    if not config.API_KEYS_FILE.exists():
+        # Create default keys file
+        default_keys = {
+            "default": "abc123",
+            "service1": "key123",
+            "service2": "key456"
+        }
+        config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(config.API_KEYS_FILE, "w", encoding="utf-8") as f:
+            json.dump(default_keys, f, indent=2)
+        return default_keys
+    
+    try:
+        with open(config.API_KEYS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error("Failed to load API keys: %s", e)
+        return {}
+
+
+def _require_service_api_key(service_name: str):
+    """Require API key for a specific service."""
+    api_key = request.headers.get("X-API-Key", "")
+    if not api_key:
+        return jsonify({"error": "Missing X-API-Key header"}), 401
+    
+    keys = _load_api_keys()
+    if service_name not in keys:
+        return jsonify({"error": f"Service '{service_name}' not found"}), 401
+    
+    if api_key != keys[service_name]:
+        return jsonify({"error": f"Invalid API key for service '{service_name}'"}), 401
+
+
 @app.route("/api/v1/tasks/submit", methods=["POST"])
 def api_task_submit():
     """
@@ -381,9 +421,9 @@ def api_task_submit():
       401:
         description: Unauthorized
     """
-    auth_error = _require_api_key()
-    if auth_error is not None:
-        return auth_error
+    # auth_error = _require_api_key()
+    # if auth_error is not None:
+    #     return auth_error
 
     file = request.files.get("file") or request.files.get("image")
     if not file or not file.filename:
@@ -399,6 +439,12 @@ def api_task_submit():
         except Exception as exc:
             return jsonify({"error": f"Invalid metadata JSON: {exc}"}), 400
 
+    # Check service API key if service name is provided
+    service_name = metadata.get("service", "default")
+    service_auth_error = _require_service_api_key(service_name)
+    if service_auth_error is not None:
+        return service_auth_error
+
     camera_id = (
         str(metadata.get("camera_name") or metadata.get("camera_serial") or metadata.get("camera_id") or "cam1")
     )
@@ -411,6 +457,15 @@ def api_task_submit():
     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if frame is None:
         return jsonify({"error": "Invalid image format"}), 400
+
+    # Resize large images for faster processing
+    h, w = frame.shape[:2]
+    max_size = 1920
+    if h > max_size or w > max_size:
+        scale = min(max_size / h, max_size / w)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     ext = Path(file.filename).suffix.lower() or ".jpg"
@@ -435,13 +490,12 @@ def api_task_submit():
     total_people_all = cameras_total + people_count
 
     processed_url = "/outputs/" + str(processed_path.relative_to(config.OUTPUTS_DIR)).replace("\\", "/")
-    return jsonify({
-        "people_count": people_count,
-        "total_people_all": total_people_all,
-        "camera_id": camera_id,
-        "metadata": metadata,
-        "processed_image_url": processed_url,
-    })
+    
+    # Javobga count qo'shib metadata bilan birga qaytaring
+    response = dict(metadata) if metadata else {}
+    response["count"] = int(people_count)
+    
+    return jsonify(response)
 
 
 @app.route("/api/upload", methods=["POST"])

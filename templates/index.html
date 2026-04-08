@@ -42,6 +42,7 @@
     <section class="upload-section">
       <article class="upload-card">
         <h2>Image Upload Detection</h2>
+        <p><a href="/api/test-submit" target="_blank">Test API submit sahifasini ochish</a></p>
         <form id="uploadForm" class="upload-form">
           <label>
             Camera profile:
@@ -53,7 +54,11 @@
           </label>
           <label>
             Choose image:
-            <input id="uploadImageInput" type="file" name="image" accept=".jpg,.jpeg,.png,.bmp" required />
+            <input id="uploadImageInput" type="file" name="file" accept=".jpg,.jpeg,.png,.bmp" required />
+          </label>
+          <label>
+            Metadata JSON:
+            <textarea id="uploadMetadata" name="metadata" rows="6" spellcheck="false">{"nvr":{"device_id":"1","device_name":"NVR nomi","status":"online","serial":"AC2075283","ip":"192.168.3.251"},"camera_name":"Bosh xona","camera_status":"online","camera_serial":"DS-2CD2443G2-I20221022AAWRK75304167","timestamp":"2026-04-08T11:30:22Z","camera_ip":"192.168.3.248","serial_number":"DS-2CD2443G2-I20221022AAWRK75304167","model":"DS-2CD2443G2-I","firmware_version":"V5.7.10 build 220830"}</textarea>
           </label>
           <button type="submit">Upload</button>
         </form>

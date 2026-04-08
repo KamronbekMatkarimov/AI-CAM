@@ -1,0 +1,14 @@
+[Unit]
+Description=CamAI person detection service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/AI-CAM
+Environment=API_KEY=abc123
+ExecStart=/bin/bash -lc 'cd /path/to/AI-CAM && .venv/bin/python app/main.py'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

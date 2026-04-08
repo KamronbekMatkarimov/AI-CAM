@@ -77,6 +77,7 @@ async function uploadAndDetectImage(evt) {
   const resultEl = document.getElementById("uploadResult");
   const previewEl = document.getElementById("uploadPreview");
   const fileInput = document.getElementById("uploadImageInput");
+  const metadataInput = document.getElementById("uploadMetadata");
 
   if (!fileInput.files || fileInput.files.length === 0) {
     resultEl.textContent = "Please choose an image first.";
@@ -85,11 +86,30 @@ async function uploadAndDetectImage(evt) {
 
   resultEl.textContent = "Processing image...";
 
-  const formData = new FormData(form);
+  const metadataValue = metadataInput?.value?.trim();
+  if (!metadataValue) {
+    resultEl.textContent = "Metadata JSON is required.";
+    return;
+  }
+
   try {
-    const res = await fetch("/api/upload", {
+    JSON.parse(metadataValue);
+  } catch (err) {
+    resultEl.textContent = "Metadata JSON is invalid.";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+  formData.append("metadata", metadataValue);
+
+  try {
+    const res = await fetch("/api/v1/tasks/submit", {
       method: "POST",
-      body: formData
+      headers: {
+        "X-API-Key": "abc123",
+      },
+      body: formData,
     });
     const payload = await res.json();
     if (!res.ok) {
@@ -97,7 +117,7 @@ async function uploadAndDetectImage(evt) {
       return;
     }
 
-    resultEl.textContent = `Detected: ${payload.people_count} people (${payload.camera_id.toUpperCase()} profile)`;
+    resultEl.textContent = `Detected: ${payload.people_count} people (${payload.camera_id?.toUpperCase() || 'unknown'} profile)`;
     previewEl.src = `${payload.processed_image_url}?t=${Date.now()}`;
     previewEl.style.display = "block";
 

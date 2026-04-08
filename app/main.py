@@ -20,11 +20,13 @@ from app.api import app as web_app
 if __name__ == "__main__":
     setup_logging()
 
-    scheduler_thread = threading.Thread(
-        target=run_scheduler,
-        kwargs={"interval_seconds": None},
-        daemon=True,
-    )
-    scheduler_thread.start()
+    # Real-time RTSP capture is disabled for API-only usage.
+    # If you later want to enable periodic camera capture, uncomment the scheduler section.
+    # scheduler_thread = threading.Thread(
+    #     target=run_scheduler,
+    #     kwargs={"interval_seconds": None},
+    #     daemon=True,
+    # )
+    # scheduler_thread.start()
 
     web_app.run(host="0.0.0.0", port=5000, debug=False)

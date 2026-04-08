@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CamAI API V1 Tasks Submit Test</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+      margin: 0; 
+      padding: 20px; 
+      background: #f5f5f5;
+    }
+    .container { max-width: 900px; margin: 0 auto; background: white; padding: 24px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    h1 { margin-top: 0; color: #333; }
+    p { color: #666; line-height: 1.6; }
+    label { display: block; margin: 16px 0 8px 0; font-weight: 500; color: #333; }
+    input[type="text"],
+    input[type="file"],
+    textarea {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    textarea {
+      font-family: "Courier New", monospace;
+      min-height: 200px;
+      resize: vertical;
+    }
+    button {
+      background: #0078d4;
+      color: white;
+      padding: 12px 24px;
+      font-size: 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #106ebe; }
+    button:active { background: #0d66bf; }
+    .result-box {
+      margin-top: 24px;
+      padding: 16px;
+      border-radius: 4px;
+      background: #f0f0f0;
+      border: 1px solid #ddd;
+      display: none;
+    }
+    .result-box.show { display: block; }
+    .result-box h3 { margin-top: 0; color: #333; }
+    .result-content {
+      background: white;
+      padding: 12px;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+      overflow-x: auto;
+      font-family: monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .result-box.success { border-left: 4px solid #107c10; background: #f1f7f0; }
+    .result-box.error { border-left: 4px solid #e81123; background: #fef7f7; }
+    .result-box.loading { border-left: 4px solid #0078d4; background: #f3f8fc; }
+    .info { color: #666; font-size: 13px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎥 CamAI API V1 Tasks Submit - Test</h1>
+    <p>Bu forma <code>POST /api/v1/tasks/submit</code> so'rovini yuboradi.</p>
+    <p>Rasmni yuklang, metadata JSON ni kiriting, API key ni qo'ying va "Yuborish" tugmasini bosing.</p>
+
+    <label>🔑 API Key (X-API-Key):</label>
+    <input id="apiKeyInput" type="text" value="abc123" />
+
+    <label>📁 Rasm fayli:</label>
+    <input id="fileInput" type="file" accept=".jpg,.jpeg,.png,.bmp" />
+
+    <label>📝 Metadata JSON:</label>
+    <textarea id="metadataInput">{"service":"default","nvr":{"device_id":"1","device_name":"NVR nomi","status":"online","serial":"AC2075283","ip":"192.168.3.251"},"camera_name":"Bosh xona","camera_status":"online","camera_serial":"DS-2CD2443G2-I20221022AAWRK75304167","timestamp":"2026-04-08T11:30:22Z","camera_ip":"192.168.3.248","serial_number":"DS-2CD2443G2-I20221022AAWRK75304167","model":"DS-2CD2443G2-I","firmware_version":"V5.7.10 build 220830"}</textarea>
+
+    <button id="submitButton">📤 Yuborish</button>
+
+    <div id="resultBox" class="result-box">
+      <h3>Natija:</h3>
+      <div id="resultContent" class="result-content"></div>
+    </div>
+  </div>
+
+  <script>
+    const submitButton = document.getElementById('submitButton');
+    const resultBox = document.getElementById('resultBox');
+    const resultContent = document.getElementById('resultContent');
+    const fileInput = document.getElementById('fileInput');
+    const metadataInput = document.getElementById('metadataInput');
+    const apiKeyInput = document.getElementById('apiKeyInput');
+
+    submitButton.addEventListener('click', async () => {
+      resultBox.className = 'result-box show loading';
+      resultContent.textContent = '⏳ Yuborilmoqda...';
+
+      // Validatsiya
+      if (!fileInput.files.length) {
+        resultBox.className = 'result-box show error';
+        resultContent.textContent = '❌ Xatolik: Rasm faylini tanlang';
+        return;
+      }
+
+      const metadata = metadataInput.value.trim();
+      if (!metadata) {
+        resultBox.className = 'result-box show error';
+        resultContent.textContent = '❌ Xatolik: Metadata JSON ni kiriting';
+        return;
+      }
+
+      try {
+        JSON.parse(metadata);
+      } catch (err) {
+        resultBox.className = 'result-box show error';
+        resultContent.textContent = '❌ Xatolik: Metadata JSON noto\'g\'ri\n' + err.message;
+        return;
+      }
+
+      const apiKey = apiKeyInput.value.trim();
+      if (!apiKey) {
+        resultBox.className = 'result-box show error';
+        resultContent.textContent = '❌ Xatolik: API Key ni kiriting';
+        return;
+      }
+
+      // So'rovni jo'natish
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+      formData.append('metadata', metadata);
+
+      try {
+        const res = await fetch('/api/v1/tasks/submit', {
+          method: 'POST',
+          headers: {
+            'X-API-Key': apiKey
+          },
+          body: formData
+        });
+
+        const json = await res.json();
+
+        if (!res.ok) {
+          resultBox.className = 'result-box show error';
+          resultContent.textContent = '❌ Xatolik (HTTP ' + res.status + '):\n' + JSON.stringify(json, null, 2);
+          return;
+        }
+
+        resultBox.className = 'result-box show success';
+        resultContent.textContent = JSON.stringify(json, null, 2);
+      } catch (err) {
+        resultBox.className = 'result-box show error';
+        resultContent.textContent = '❌ So\'rov jo\'natishda xatolik:\n' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
