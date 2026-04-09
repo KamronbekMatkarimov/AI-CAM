@@ -29,4 +29,4 @@ if __name__ == "__main__":
     # )
     # scheduler_thread.start()
 
-    web_app.run(host="0.0.0.0", port=5000, debug=False)
+    web_app.run(host="0.0.0.0", port=5050, debug=False)

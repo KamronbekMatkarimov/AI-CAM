@@ -13,6 +13,8 @@ import traceback
 import cv2
 import numpy as np
 from flask import Flask, jsonify, render_template, send_from_directory, request, Response
+from werkzeug.exceptions import HTTPException
+import flasgger
 from flasgger import Swagger
 import requests
 
@@ -23,10 +25,12 @@ from app.utils import read_stats_records
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Flasgger's /apidocs/ loads Swagger UI from /static/...; ship those assets from the package.
+_FLASGGER_UI_STATIC = Path(flasgger.__file__).resolve().parent / "ui3" / "static"
 app = Flask(
     __name__,
     template_folder=str(PROJECT_ROOT / "templates"),
-    static_folder=str(PROJECT_ROOT / "static"),
+    static_folder=str(_FLASGGER_UI_STATIC),
 )
 app.config["PROPAGATE_EXCEPTIONS"] = True
 app.config["TRAP_HTTP_EXCEPTIONS"] = True
@@ -35,6 +39,8 @@ app.config["DEBUG"] = True
 
 @app.errorhandler(Exception)
 def _handle_unexpected_error(e: Exception):
+    if isinstance(e, HTTPException):
+        return e
     tb = traceback.format_exc()
     app.logger.error(tb)
     if request.path.startswith("/api/") or request.path.startswith("/swagger"):
@@ -56,6 +62,9 @@ swagger = Swagger(
         "specs_route": "/apidocs/",
         "title": "CamAI API Docs",
         "uiversion": 3,
+        # Flasgger template outputs `let auth_config = {{ ... }}`; Jinja renders Python
+        # None as the string "None", which breaks Swagger UI — empty object is valid JS.
+        "auth": {},
     },
     template={
         "swagger": "2.0",

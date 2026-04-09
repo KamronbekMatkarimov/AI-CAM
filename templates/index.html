@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CamAI</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 2rem; max-width: 48rem; line-height: 1.5; }
+    h1 { font-size: 1.5rem; margin-top: 0; }
+    ul { padding-left: 1.25rem; }
+    .muted { opacity: 0.75; font-size: 0.9rem; }
+    nav { margin-top: 1.5rem; }
+    nav a { margin-right: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>CamAI</h1>
+  <p class="muted">RTSP camera person detection — configured cameras:</p>
+  {% if cameras %}
+  <ul>
+    {% for cam in cameras %}
+    <li>{{ cam }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">No RTSP cameras in <code>config.RTSP_CAMERAS</code>. API and uploads still work.</p>
+  {% endif %}
+  <nav>
+    <a href="/apidocs/">API docs</a>
+    <a href="/api/status">Status (JSON)</a>
+    <a href="/api/test-submit">Task submit test</a>
+  </nav>
+</body>
+</html>
