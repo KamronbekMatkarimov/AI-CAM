@@ -411,23 +411,30 @@ def _save_api_keys(keys: dict) -> None:
         json.dump(keys, f, indent=2, ensure_ascii=False)
 
 
-def _require_service_api_key(service_name: str):
-    """Require API key for a specific service."""
-    api_key = request.headers.get("X-API-Key", "")
-    if not api_key:
-        return jsonify({"error": "Missing X-API-Key header"}), 401
-    
+def _require_service_api_key(service_name: str, api_key: str | None = None):
+    """Require API key for a specific service.
+
+    If ``api_key`` is omitted, uses the ``X-API-Key`` header. If provided (e.g. merged
+    from header + ``metadata.api_key`` for ``/api/v1/tasks/submit``), that value is used.
+    """
+    if api_key is not None:
+        key = str(api_key).strip()
+    else:
+        key = (request.headers.get("X-API-Key", "") or "").strip()
+    if not key:
+        return jsonify({"error": "Missing X-API-Key (header or metadata.api_key)"}), 401
+
     keys = _load_api_keys()
     if service_name not in keys:
         # Auto-provision: allow any service name, bind it to the provided X-API-Key.
-        keys[str(service_name)] = str(api_key)
+        keys[str(service_name)] = str(key)
         try:
             _save_api_keys(keys)
         except Exception as e:
             app.logger.error("Failed to save API keys: %s", e)
             return jsonify({"error": "Failed to persist service key"}), 500
-    
-    if api_key != keys[service_name]:
+
+    if key != keys[service_name]:
         return jsonify({"error": f"Invalid API key for service '{service_name}'"}), 401
 
 
@@ -438,6 +445,14 @@ def api_task_submit():
     ---
     tags:
       - tasks
+    description: |
+      **multipart/form-data** — rasm fayli uchun standart; Swagger shuning uchun forma maydonlarini ko‘rsatadi.
+
+      **Servis nomi** alohida form maydoni emas — faqat **`metadata`** JSON ichida: `service` yoki `service_name` (kalit bilan mos kelishi kerak).
+      **`api_key`** shu JSONda ixtiyoriy, agar `X-API-Key` header yuborilmasa.
+
+      `metadata` maydoni — **bitta qatorli JSON satr** (Swaggerda `string`), masalan:
+      `{"service":"mysvc","api_key":"...","camera_id":"internet"}`.
     consumes:
       - multipart/form-data
     parameters:
@@ -445,17 +460,14 @@ def api_task_submit():
         in: formData
         type: file
         required: true
-        description: Image file
-      - name: service
-        in: formData
-        type: string
-        required: true
-        description: Service name (must match X-API-Key)
+        description: Rasm fayli (majburiy).
       - name: metadata
         in: formData
         type: string
-        required: false
-        description: JSON metadata string
+        required: true
+        description: |
+          Majburiy. Bir qatorli JSON; ichida `service` yoki `service_name` bo‘lishi kerak.
+          Misol: `{"service":"default","api_key":"your-key","camera_id":"internet"}`.
     responses:
       200:
         description: Detection result
@@ -472,22 +484,40 @@ def api_task_submit():
     if not file or not file.filename:
         return jsonify({"error": "No file uploaded"}), 400
 
-    metadata_raw = request.form.get("metadata", "")
-    metadata = {}
-    if metadata_raw:
-        try:
-            metadata = json.loads(metadata_raw)
-            if not isinstance(metadata, dict):
-                raise ValueError("metadata must be a JSON object")
-        except Exception as exc:
-            return jsonify({"error": f"Invalid metadata JSON: {exc}"}), 400
+    metadata_raw = (request.form.get("metadata") or "").strip()
+    if not metadata_raw:
+        return jsonify({
+            "error": (
+                "metadata is required (JSON string with service or service_name, "
+                'e.g. {"service":"default","camera_id":"cam1"})'
+            ),
+        }), 400
 
-    # `service` is mandatory and must match X-API-Key (see outputs/logs/api_keys.json)
-    # It must be provided as its OWN multipart/form-data field (not inside metadata).
-    service_name = (request.form.get("service") or "").strip()
+    try:
+        parsed = json.loads(metadata_raw)
+        if not isinstance(parsed, dict):
+            raise ValueError("metadata must be a JSON object")
+        metadata = parsed
+    except Exception as exc:
+        return jsonify({"error": f"Invalid metadata JSON: {exc}"}), 400
+
+    meta_api_key = metadata.pop("api_key", None)
+
+    service_name = str(
+        metadata.get("service") or metadata.get("service_name") or ""
+    ).strip()
+    metadata.pop("service", None)
+    metadata.pop("service_name", None)
+
     if not service_name:
-        return jsonify({"error": "service is required"}), 400
-    service_auth_error = _require_service_api_key(service_name)
+        return jsonify({
+            "error": "metadata must include service or service_name",
+        }), 400
+
+    header_key = (request.headers.get("X-API-Key", "") or "").strip()
+    meta_key_str = str(meta_api_key).strip() if meta_api_key is not None else ""
+    resolved_key = header_key or meta_key_str
+    service_auth_error = _require_service_api_key(service_name, api_key=resolved_key)
     if service_auth_error is not None:
         return service_auth_error
 

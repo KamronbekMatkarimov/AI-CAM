@@ -16,13 +16,16 @@
 </head>
 <body>
   <h1>POST /api/v1/tasks/submit</h1>
-  <p class="muted">Uses <code>X-API-Key</code> (must match the key stored for the chosen service in <code>outputs/logs/api_keys.json</code>).</p>
+  <p class="muted">Servis va (ixtiyoriy) kalit faqat <code>metadata</code> JSON ichida. Header: <code>X-API-Key</code> yoki <code>metadata.api_key</code>.</p>
   <form id="f" enctype="multipart/form-data">
-    <label>Service name <input name="service" type="text" value="default" required></label>
-    <label>API key <input name="api_key" type="text" placeholder="X-API-Key header" autocomplete="off"></label>
+    <label>API key (ixtiyoriy agar metadata.api_key bo‘lsa) <input name="api_key_header" type="text" placeholder="X-API-Key" autocomplete="off"></label>
     <label>Image <input name="file" type="file" accept="image/*" required></label>
-    <label>Metadata (JSON object, optional)
-      <textarea name="metadata" rows="4" placeholder='{"camera_id": "internet"}'></textarea>
+    <label>metadata (majburiy, JSON)
+      <textarea name="metadata" rows="6" required>{
+  "service": "default",
+  "api_key": "your-key",
+  "camera_id": "internet"
+}</textarea>
     </label>
     <button type="submit">Submit</button>
   </form>
@@ -32,13 +35,18 @@
     document.getElementById('f').addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const fd = new FormData();
-      const service = ev.target.service.value.trim();
-      const key = ev.target.api_key.value.trim();
+      const key = ev.target.api_key_header.value.trim();
       const file = ev.target.file.files[0];
-      const meta = ev.target.metadata.value.trim();
-      fd.append('service', service);
+      let meta = ev.target.metadata.value.trim();
+      try {
+        const o = JSON.parse(meta);
+        meta = JSON.stringify(o);
+      } catch (e) {
+        document.getElementById('out').textContent = 'metadata JSON xato: ' + e;
+        return;
+      }
       fd.append('file', file);
-      if (meta) fd.append('metadata', meta);
+      fd.append('metadata', meta);
       const out = document.getElementById('out');
       out.textContent = '…';
       try {
