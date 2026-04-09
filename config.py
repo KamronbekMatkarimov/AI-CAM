@@ -27,15 +27,31 @@ MIN_BOX_AREA_RATIO = 0.001
 MIN_BOX_HEIGHT_RATIO = 0.05
 
 CAMERA_DETECTION_SETTINGS = {
+    # For arbitrary internet images: balanced thresholds (good recall, fewer false positives).
+    "internet": {
+        "imgsz": 640,
+        "conf": 0.3,
+        "dedupe_iou": 0.65,
+        "min_aspect_ratio": 0.85,
+    },
     "cam1": {
         "imgsz": 640,
         "conf": 0.3,
         "dedupe_iou": 0.65,
+        "min_aspect_ratio": 0.85,
     },
     "cam2": {
         "imgsz": 640,
         "conf": 0.3,
         "dedupe_iou": 0.65,
+        "min_aspect_ratio": 0.85,
+    },
+    # API v1 tasks often send `camera_name` as camera_id (e.g. "Bosh xona").
+    "Bosh xona": {
+        "imgsz": 640,
+        "conf": 0.35,
+        "dedupe_iou": 0.65,
+        "min_aspect_ratio": 1.15,
     },
 }
 

@@ -458,8 +458,18 @@ def api_task_submit():
     if service_auth_error is not None:
         return service_auth_error
 
-    camera_id = (
-        str(metadata.get("camera_name") or metadata.get("camera_serial") or metadata.get("camera_id") or "cam1")
+    # Prefer explicit `camera_id` (e.g. "internet") over camera_name/serial.
+    camera_id = str(
+        metadata.get("camera_id")
+        or metadata.get("camera_name")
+        or metadata.get("camera_serial")
+        or "cam1"
+    )
+    app.logger.info(
+        "tasks.submit camera_id=%s (metadata.camera_id=%s, camera_name=%s)",
+        camera_id,
+        metadata.get("camera_id"),
+        metadata.get("camera_name"),
     )
 
     file_bytes = file.read()

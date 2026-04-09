@@ -90,6 +90,7 @@ def detect_persons(
     min_area_ratio = float(settings.get("min_box_area_ratio", config.MIN_BOX_AREA_RATIO))
     min_h_ratio = float(settings.get("min_box_height_ratio", config.MIN_BOX_HEIGHT_RATIO))
     dedupe_iou = settings.get("dedupe_iou", 0.65)
+    min_aspect_ratio = float(settings.get("min_aspect_ratio", 0.0))
 
     # IMPORTANT: run YOLO on the original frame. Pre-resizing here causes double-resize
     # (our resize + YOLO's letterbox), which hurts small-person recall and stability.
@@ -134,6 +135,14 @@ def detect_persons(
         box_h = float(y2 - y1)
         if proc_h > 0 and (box_h / float(proc_h)) < min_h_ratio:
             continue
+
+        # Helps suppress common false positives like chairs/legs/objects.
+        # Typical full-body person boxes are taller than wide.
+        if min_aspect_ratio > 0:
+            box_w = float(x2 - x1)
+            ar = box_h / max(1.0, box_w)
+            if ar < min_aspect_ratio:
+                continue
 
         crop = proc[y1:y2, x1:x2].copy()
 
