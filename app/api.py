@@ -84,6 +84,7 @@ class _QueueJob:
     job_id: str
     batch_id: str
     callback_url: str | None
+    service_name: str
     camera_id: str
     original_filename: str
     image_bytes: bytes
@@ -130,6 +131,7 @@ def _post_callback(
     original_name: str,
     processed_bytes: bytes,
     processed_name: str,
+    service: str,
     camera_id: str,
     people_count: int,
     total_people_all: int,
@@ -139,6 +141,7 @@ def _post_callback(
     meta = {
         "job_id": job_id,
         "batch_id": batch_id,
+        "service": service,
         "camera_id": camera_id,
         "people_count": int(people_count),
         "total_people_all": int(total_people_all),
@@ -204,6 +207,7 @@ def _queue_worker() -> None:
                     original_name=job.original_filename or "image.jpg",
                     processed_bytes=processed_buf.tobytes(),
                     processed_name=processed_name,
+                    service=job.service,
                     camera_id=job.camera_id,
                     people_count=int(people_count),
                     total_people_all=int(total_people_all),
@@ -388,8 +392,14 @@ def _load_api_keys():
         with open(config.API_KEYS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        logger.error("Failed to load API keys: %s", e)
+        app.logger.error("Failed to load API keys: %s", e)
         return {}
+
+
+def _save_api_keys(keys: dict) -> None:
+    config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    with open(config.API_KEYS_FILE, "w", encoding="utf-8") as f:
+        json.dump(keys, f, indent=2, ensure_ascii=False)
 
 
 def _require_service_api_key(service_name: str):
@@ -400,7 +410,13 @@ def _require_service_api_key(service_name: str):
     
     keys = _load_api_keys()
     if service_name not in keys:
-        return jsonify({"error": f"Service '{service_name}' not found"}), 401
+        # Auto-provision: allow any service name, bind it to the provided X-API-Key.
+        keys[str(service_name)] = str(api_key)
+        try:
+            _save_api_keys(keys)
+        except Exception as e:
+            app.logger.error("Failed to save API keys: %s", e)
+            return jsonify({"error": "Failed to persist service key"}), 500
     
     if api_key != keys[service_name]:
         return jsonify({"error": f"Invalid API key for service '{service_name}'"}), 401
@@ -421,6 +437,11 @@ def api_task_submit():
         type: file
         required: true
         description: Image file
+      - name: service
+        in: formData
+        type: string
+        required: true
+        description: Service name (must match X-API-Key)
       - name: metadata
         in: formData
         type: string
@@ -452,8 +473,11 @@ def api_task_submit():
         except Exception as exc:
             return jsonify({"error": f"Invalid metadata JSON: {exc}"}), 400
 
-    # Check service API key if service name is provided
-    service_name = metadata.get("service", "default")
+    # `service` is mandatory and must match X-API-Key (see outputs/logs/api_keys.json)
+    # It must be provided as its OWN multipart/form-data field (not inside metadata).
+    service_name = (request.form.get("service") or "").strip()
+    if not service_name:
+        return jsonify({"error": "service is required"}), 400
     service_auth_error = _require_service_api_key(service_name)
     if service_auth_error is not None:
         return service_auth_error
@@ -516,6 +540,7 @@ def api_task_submit():
     
     # Javobga people_count qo'shib metadata bilan birga qaytaring
     response = dict(metadata) if metadata else {}
+    response["service_name"] = service_name
     response["people_count"] = int(people_count)
     
     return jsonify(response)
@@ -627,7 +652,14 @@ def api_queue_upload():
     if callback_url and not _is_http_url(callback_url):
         return jsonify({"error": "callback_url must be a valid http/https URL"}), 400
 
-    camera_id = "cam1"
+    service_name = (request.form.get("service") or "").strip()
+    if not service_name:
+        return jsonify({"error": "service is required"}), 400
+    service_auth_error = _require_service_api_key(service_name)
+    if service_auth_error is not None:
+        return service_auth_error
+
+    camera_id = (request.form.get("camera_id") or "cam1").strip() or "cam1"
 
     files = request.files.getlist("image")
     if not files:
@@ -649,6 +681,7 @@ def api_queue_upload():
             "job_id": job_id,
             "batch_id": batch_id,
             "status": "queued",
+            "service_name": service_name,
             "camera_id": camera_id,
             "callback_url": callback_url,
             "original_filename": f.filename,
@@ -657,6 +690,7 @@ def api_queue_upload():
             job_id=job_id,
             batch_id=batch_id,
             callback_url=callback_url,
+            service_name=service_name,
             camera_id=camera_id,
             original_filename=f.filename,
             image_bytes=image_bytes,
