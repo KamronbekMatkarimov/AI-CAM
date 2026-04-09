@@ -13,6 +13,7 @@ import traceback
 import cv2
 import numpy as np
 from flask import Flask, jsonify, render_template, send_from_directory, request, Response
+from flasgger import Swagger
 import requests
 
 import config
@@ -40,31 +41,43 @@ def _handle_unexpected_error(e: Exception):
         return jsonify({"error": str(e), "type": type(e).__name__}), 500
     return Response("Internal Server Error", status=500)
 
-# swagger = Swagger(
-#     app,
-#     config={
-#         "specs": [
-#             {
-#                 "endpoint": "apispec_1",
-#                 "route": "/apispec_1.json",
-#                 "rule_filter": lambda rule: True,
-#                 "model_filter": lambda tag: True,
-#             }
-#         ],
-#         "headers": [],
-#         "specs_route": "/apidocs/",
-#         "title": "CamAI API Docs",
-#         "uiversion": 3,
-#     },
-#     template={
-#         "swagger": "2.0",
-#         "info": {
-#             "title": "CamAI API",
-#             "description": "RTSP camera person detection dashboard + API.",
-#             "version": "1.0.0",
-#         },
-#     },
-# )
+swagger = Swagger(
+    app,
+    config={
+        "specs": [
+            {
+                "endpoint": "apispec_1",
+                "route": "/apispec_1.json",
+                "rule_filter": lambda rule: True,
+                "model_filter": lambda tag: True,
+            }
+        ],
+        "headers": [],
+        "specs_route": "/apidocs/",
+        "title": "CamAI API Docs",
+        "uiversion": 3,
+    },
+    template={
+        "swagger": "2.0",
+        "info": {
+            "title": "CamAI API",
+            "description": "RTSP camera person detection dashboard + API.",
+            "version": "1.0.0",
+        },
+        "securityDefinitions": {
+            "ApiKeyAuth": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-API-Key"
+            }
+        },
+        "security": [
+            {
+                "ApiKeyAuth": []
+            }
+        ]
+    },
+)
 
 @dataclass(frozen=True)
 class _QueueJob:
@@ -491,9 +504,9 @@ def api_task_submit():
 
     processed_url = "/outputs/" + str(processed_path.relative_to(config.OUTPUTS_DIR)).replace("\\", "/")
     
-    # Javobga count qo'shib metadata bilan birga qaytaring
+    # Javobga people_count qo'shib metadata bilan birga qaytaring
     response = dict(metadata) if metadata else {}
-    response["count"] = int(people_count)
+    response["people_count"] = int(people_count)
     
     return jsonify(response)
 
